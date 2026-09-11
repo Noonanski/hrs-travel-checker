@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#111827" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="HRS Travel" />
+  <title>HRS Rail Travel Checker</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <style>
+    :root{--bg:#f3f4f6;--card:#fff;--ink:#111827;--muted:#6b7280;--line:#d1d5db;--green:#166534;--green-bg:#dcfce7;--red:#991b1b;--red-bg:#fee2e2;--brand:#111827}
+    *{box-sizing:border-box} body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink)}
+    .wrap{max-width:640px;margin:0 auto;min-height:100vh;padding:24px 16px 40px}.brand{text-align:center;margin-bottom:18px}.brand h1{margin:0;font-size:30px;letter-spacing:.8px}.brand p{margin:5px 0 0;color:var(--muted);font-weight:700}
+    .card{background:var(--card);border-radius:18px;padding:20px;box-shadow:0 10px 30px rgba(17,24,39,.08);border:1px solid #e5e7eb}label{display:block;font-size:14px;font-weight:800;margin-bottom:7px}
+    .locked{background:#f9fafb;border:1px solid var(--line);border-radius:12px;padding:13px 14px;margin-bottom:16px;font-weight:800}input{width:100%;font-size:21px;padding:16px 14px;border:1px solid var(--line);border-radius:12px;outline:none;text-transform:uppercase}
+    button{width:100%;margin-top:14px;padding:17px;border:0;border-radius:12px;background:var(--brand);color:#fff;font-size:18px;font-weight:900;cursor:pointer}button:disabled{opacity:.55}.result{display:none;margin-top:18px;border-radius:16px;padding:20px;text-align:center;border:2px solid transparent}.result h2{margin:0 0 8px;font-size:25px}.time{font-size:42px;font-weight:900;margin:8px 0 4px}.distance{font-size:16px;font-weight:800}.small{font-size:14px;margin-top:10px}.green{background:var(--green-bg);color:var(--green);border-color:#86efac}.red{background:var(--red-bg);color:var(--red);border-color:#fca5a5}.note{font-size:12.5px;color:var(--muted);margin-top:16px;line-height:1.45}.error{margin-top:14px;padding:12px 14px;border-radius:10px;background:#fff7ed;color:#9a3412;display:none;font-size:14px}.meta{margin-top:18px;padding-top:14px;border-top:1px solid #e5e7eb;font-size:13px;color:var(--muted);text-align:center}
+  </style>
+</head>
+<body>
+<main class="wrap">
+  <div class="brand"><h1>HRS RAIL</h1><p>Travel Allowance Checker</p></div>
+  <section class="card">
+    <label>Starting location</label><div class="locked">HRS Rail Yard — TN29 9JH</div>
+    <label for="postcode">Site postcode</label><input id="postcode" autocomplete="postal-code" placeholder="e.g. RG21 4YY" maxlength="10" />
+    <button id="checkBtn">CHECK TRAVEL</button>
+    <div id="error" class="error"></div>
+    <div id="result" class="result"><h2 id="status"></h2><div id="time" class="time"></div><div id="distance" class="distance"></div><div id="detail" class="small"></div></div>
+    <p class="note">Company rule: estimated standard driving time of <strong>2 hours or less</strong> from TN29 9JH = standard travel. Over 2 hours = additional payment applies. This checker uses road-network routing and does not use live traffic.</p>
+    <div class="meta">HRS Rail Limited • Internal travel reference tool</div>
+  </section>
+</main>
+<script>
+const ORIGIN='TN29 9JH'; const THRESHOLD_SECONDS=7200;
+const postcodeInput=document.getElementById('postcode'),checkBtn=document.getElementById('checkBtn'),result=document.getElementById('result'),errorBox=document.getElementById('error');
+postcodeInput.addEventListener('keydown',e=>{if(e.key==='Enter')checkTravel()}); checkBtn.addEventListener('click',checkTravel);
+function cleanPostcode(v){return v.trim().toUpperCase().replace(/\s+/g,'')}
+async function postcodeCoords(postcode){const r=await fetch(`https://api.postcodes.io/postcodes/${encodeURIComponent(cleanPostcode(postcode))}`); if(!r.ok) throw new Error('Postcode not found.'); const j=await r.json(); if(!j.result) throw new Error('Postcode not found.'); return {lat:j.result.latitude,lon:j.result.longitude,postcode:j.result.postcode};}
+async function route(a,b){const u=`https://router.project-osrm.org/route/v1/driving/${a.lon},${a.lat};${b.lon},${b.lat}?overview=false&alternatives=false&steps=false`; const r=await fetch(u); if(!r.ok) throw new Error('Routing service unavailable. Please try again.'); const j=await r.json(); if(j.code!=='Ok'||!j.routes?.[0]) throw new Error('No driving route could be calculated.'); return j.routes[0];}
+function formatTime(s){const mins=Math.round(s/60),h=Math.floor(mins/60),m=mins%60; return h?`${h} hr ${m} min`:`${m} min`}
+function formatDistance(m){return `${(m/1609.344).toFixed(1)} miles`}
+async function checkTravel(){errorBox.style.display='none';result.style.display='none';if(!postcodeInput.value.trim()){errorBox.textContent='Enter the site postcode.';errorBox.style.display='block';return} checkBtn.disabled=true;checkBtn.textContent='CHECKING…'; try{const [a,b]=await Promise.all([postcodeCoords(ORIGIN),postcodeCoords(postcodeInput.value)]); const r=await route(a,b); const standard=r.duration<=THRESHOLD_SECONDS; result.className='result '+(standard?'green':'red'); document.getElementById('status').textContent=standard?'✓ STANDARD TRAVEL':'✕ ADDITIONAL PAYMENT APPLIES';document.getElementById('time').textContent=formatTime(r.duration);document.getElementById('distance').textContent=`${formatDistance(r.distance)} by road`;document.getElementById('detail').textContent=`${b.postcode} • ${standard?'Within':'Outside'} the 2-hour HRS Rail travel limit`;result.style.display='block';}catch(e){errorBox.textContent=e.message||'Unable to check this postcode.';errorBox.style.display='block'}finally{checkBtn.disabled=false;checkBtn.textContent='CHECK TRAVEL'}}
+if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./service-worker.js').catch(()=>{}));}
+</script>
+</body>
+</html>
